@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rynata Control Panel</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>Rynata ✨</h1>
+
+  <div class="field">
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password">
+  </div>
+  <button id="connect" type="button">Connect</button>
+
+  <div class="field">
+    <label for="guild">Server</label>
+    <select id="guild"></select>
+  </div>
+
+  <nav class="tabs">
+    <button type="button" class="tab active" data-tab="compose">Compose</button>
+    <button type="button" class="tab" data-tab="sent">Sent messages <span id="sentCount"></span></button>
+    <button type="button" class="tab" data-tab="alerts">Stream alerts</button>
+    <button type="button" class="tab" data-tab="logs">Logs</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ================= COMPOSE ================= -->
+  <section id="tab-compose" class="layout">
+    <div class="panel editor">
+      <div id="editBanner" class="banner" hidden>
+        <span id="editText"></span>
+        <button id="cancelEdit" type="button" class="ghost">Cancel</button>
+      </div>
+
+      <label for="channel">Channel</label>
+      <select id="channel"></select>
+
+      <label>Formatting <span class="hint">(applies to the message or embed text box you're in)</span></label>
+      <div class="toolbar" id="toolbar">
+        <button type="button" data-fmt="bold" title="Bold"><b>B</b></button>
+        <button type="button" data-fmt="italic" title="Italic"><i>I</i></button>
+        <button type="button" data-fmt="underline" title="Underline"><u>U</u></button>
+        <button type="button" data-fmt="strike" title="Strikethrough"><s>S</s></button>
+        <button type="button" data-fmt="code" title="Inline code">&lt;/&gt;</button>
+        <button type="button" data-fmt="spoiler" title="Spoiler">▒</button>
+        <button type="button" data-fmt="quote" title="Quote">❝</button>
+        <button type="button" data-fmt="link" title="Link">🔗</button>
+      </div>
+
+      <label for="content">Message</label>
+      <textarea id="content" rows="4" maxlength="2000" placeholder="Plain message text (optional if you use an embed)"></textarea>
+
+      <label for="imageFile">Image <span class="hint">(attached to the message itself, not the embed · one image · PNG, JPG, GIF or WEBP · max 10 MB)</span></label>
+      <div class="row image-row">
+        <input id="imageFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+        <button id="imageRemove" type="button" class="ghost" hidden>Remove image</button>
+      </div>
+      <img id="imageThumb" class="image-thumb" alt="" hidden>
+
+      <label class="check"><input type="checkbox" id="useEmbed"> Use an embed</label>
+      <fieldset id="embedFields" hidden>
+        <label for="eTitle">Title</label>
+        <input id="eTitle" maxlength="256">
+
+        <label for="eDesc">Description</label>
+        <textarea id="eDesc" rows="5" maxlength="4096"></textarea>
+
+        <div class="row">
+          <div class="grow">
+            <label for="eImage">Image URL</label>
+            <input id="eImage" placeholder="https://…">
+          </div>
+          <div class="grow">
+            <label for="eThumb">Thumbnail URL</label>
+            <input id="eThumb" placeholder="https://…">
+          </div>
+          <div>
+            <label for="eColor">Color</label>
+            <input id="eColor" type="color" value="#5865f2">
+          </div>
+        </div>
+
+        <label for="eFooter">Footer</label>
+        <input id="eFooter" maxlength="2048">
+      </fieldset>
+
+      <h2>Buttons <span id="buttonCount" class="hint"></span></h2>
+      <div id="buttons"></div>
+      <button id="addButton" type="button" class="ghost">+ Add button</button>
+
+      <div class="submit-row">
+        <button id="submit" type="button" class="primary">Send message</button>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <h2>Preview</h2>
+      <div class="chat" id="preview"></div>
+    </aside>
+  </section>
+
+  <!-- ================= STREAM ALERTS ================= -->
+  <section id="tab-alerts" class="layout" hidden>
+    <div class="panel editor">
+      <label class="check"><input type="checkbox" id="aEnabled"> Alerts are on for this server</label>
+
+      <div class="row">
+        <div class="grow">
+          <label for="aChannel">Post in</label>
+          <select id="aChannel"></select>
+        </div>
+        <div class="grow">
+          <label for="aMention">Ping</label>
+          <select id="aMention"></select>
+        </div>
+      </div>
+
+      <h2>Your channels</h2>
+      <label for="aTwitch">Twitch name</label>
+      <input id="aTwitch" placeholder="yourname or https://twitch.tv/yourname">
+      <label for="aYoutube">YouTube channel</label>
+      <input id="aYoutube" placeholder="@handle, channel URL, or channel ID (UC…)">
+      <p id="aYoutubeHint" class="hint"></p>
+      <p class="hint">Fill in one or both. When you multicast, both go in the same message.</p>
+
+      <h2>Message</h2>
+      <p class="hint">Placeholders: <code>{mention}</code> <code>{streamer}</code> <code>{title}</code> <code>{game}</code> <code>{platforms}</code> <code>{twitchUrl}</code> <code>{youtubeUrl}</code></p>
+      <div id="aToolbarSlot"></div>
+      <label for="aContent">Message</label>
+      <textarea id="aContent" rows="3" maxlength="2000"></textarea>
+
+      <label class="check"><input type="checkbox" id="aUseEmbed"> Use an embed</label>
+      <fieldset id="aEmbedFields" hidden>
+        <label for="aTitle">Title</label>
+        <input id="aTitle" maxlength="256">
+
+        <label for="aDesc">Description</label>
+        <textarea id="aDesc" rows="3" maxlength="4096"></textarea>
+
+        <div class="row">
+          <div class="grow">
+            <label for="aImage">Image URL</label>
+            <input id="aImage" placeholder="https://…">
+          </div>
+          <div class="grow">
+            <label for="aThumb">Thumbnail URL</label>
+            <input id="aThumb" placeholder="https://…">
+          </div>
+          <div>
+            <label for="aColor">Color</label>
+            <input id="aColor" type="color" value="#9146ff">
+          </div>
+        </div>
+
+        <label class="check"><input type="checkbox" id="aLiveThumb"> Use the live stream's thumbnail as the embed image</label>
+
+        <label for="aMain">Take the title, thumbnail and title link from</label>
+        <select id="aMain">
+          <option value="twitch">Twitch</option>
+          <option value="youtube">YouTube</option>
+        </select>
+        <p class="hint">If you're live on both, this platform wins. If it isn't live yet, the other one is used, and the message updates when it joins.</p>
+
+        <label for="aFooter">Footer</label>
+        <input id="aFooter" maxlength="2048">
+      </fieldset>
+
+      <h2>Buttons</h2>
+      <p class="hint">Each button opens the stream. A button only appears for the platforms that are live.</p>
+      <div class="row">
+        <div class="grow">
+          <label for="aYtLabel">YouTube button</label>
+          <input id="aYtLabel" maxlength="80">
+        </div>
+        <div class="grow">
+          <label for="aTwLabel">Twitch button</label>
+          <input id="aTwLabel" maxlength="80">
+        </div>
+      </div>
+
+      <h2>Timing</h2>
+      <div class="row">
+        <div class="grow">
+          <label for="aGrace">Wait for the other platform (seconds)</label>
+          <input id="aGrace" type="number" min="0" max="600">
+        </div>
+        <div class="grow">
+          <label for="aEnd">Stream counts as over after (minutes)</label>
+          <input id="aEnd" type="number" min="1" max="240">
+        </div>
+      </div>
+      <p class="hint">If you go live on one platform first, I wait this long for the other so you get one message. If the second one starts later, the message gets its button added (no second ping).</p>
+
+      <div class="submit-row actions">
+        <button id="aSave" type="button" class="primary">Save</button>
+        <button id="aTest" type="button" class="ghost">Save &amp; send test alert</button>
+        <button id="aReset" type="button" class="ghost">Forget current stream</button>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="panel">
+        <h2>Preview</h2>
+        <div class="chat" id="aPreview"></div>
+      </div>
+      <div class="panel">
+        <h2>Status</h2>
+        <div id="aStatus"></div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================= LOGS ================= -->
+  <section id="tab-logs" hidden>
+    <div class="panel single">
+      <label class="check"><input type="checkbox" id="lEnabled"> Logging is on for this server</label>
+
+      <div class="row">
+        <div class="grow">
+          <label for="lMsgChannel">Message log channel</label>
+          <select id="lMsgChannel"></select>
+        </div>
+        <div class="grow">
+          <label for="lMemChannel">Member log channel</label>
+          <select id="lMemChannel"></select>
+        </div>
+      </div>
+      <p class="hint">Deleted and edited messages go to the message log. Joins and leaves go to the member log. You can use one channel for both. Make these channels staff-only: they show what people wrote.</p>
+
+      <h2>What to log</h2>
+      <label class="check"><input type="checkbox" id="lDelete"> Deleted messages (including mass deletes, with who deleted them when Discord says)</label>
+      <label class="check"><input type="checkbox" id="lEdit"> Edited messages (before and after)</label>
+      <label class="check"><input type="checkbox" id="lJoin"> Members joining</label>
+      <label class="check"><input type="checkbox" id="lLeave"> Members leaving (marked as kicked or banned when that's what happened)</label>
+      <label class="check"><input type="checkbox" id="lIgnoreBots"> Ignore messages from bots</label>
+
+      <label for="lNewDays">Flag new accounts younger than (days, 0 = off)</label>
+      <input id="lNewDays" type="number" min="0" max="365">
+
+      <h2>Ignored channels</h2>
+      <p class="hint">Messages in ticked channels or categories are never logged. Tick your private staff areas. The log channels are always ignored.</p>
+      <div id="lIgnored" class="checklist"></div>
+
+      <div class="submit-row actions">
+        <button id="lSave" type="button" class="primary">Save</button>
+        <button id="lTest" type="button" class="ghost">Save &amp; send sample logs</button>
+      </div>
+
+      <div id="lStatus" class="log-status"></div>
+    </div>
+  </section>
+
+  <!-- ================= SENT ================= -->
+  <section id="tab-sent" hidden>
+    <div id="sentList"></div>
+  </section>
+</main>
+
+<dialog id="copyDialog">
+  <h2>Send to another channel</h2>
+  <p id="copyInfo" class="muted"></p>
+  <select id="copyChannel"></select>
+  <p id="copyError" class="form-error"></p>
+  <div class="dialog-actions">
+    <button id="copyCancel" type="button" class="ghost">Cancel</button>
+    <button id="copyConfirm" type="button">Send copy</button>
+  </div>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+<script src="markdown.js"></script>
+<script src="app.js"></script>
+<script src="alerts.js"></script>
+<script src="logs.js"></script>
+</body>
+</html>

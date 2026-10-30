@@ -1,0 +1,13 @@
+services:
+  rynata:
+    build: .
+    restart: unless-stopped # starts again after a crash or a reboot
+    init: true # cleans up leftover yt-dlp/ffmpeg processes when songs are skipped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0 # inside the container; who can reach it is decided by "ports" below
+    ports:
+      - "3000:3000" # panel open to your network
+      # - "127.0.0.1:3000:3000" # use this line instead to keep it private to the laptop (then use an SSH tunnel)
+    volumes:
+      - ./data:/app/data
