@@ -1,6 +1,6 @@
 {
   "name": "rynata",
-  "version": "0.1.0",
+  "version": "11",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
