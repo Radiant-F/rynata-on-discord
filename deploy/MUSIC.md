@@ -41,6 +41,25 @@ command. When the audio really starts, the message becomes **Now playing**. `ryn
   (use `yt-dlp_linux_aarch64` on ARM). Node 22.12 or newer is required.
 - The bot needs to be allowed to **Connect** and **Speak** in the voice channel. No new switches in the Developer Portal.
 
+## Staying in the voice channel
+The bot leaves a voice channel only for these reasons, and every one of them is written to the log
+(`docker compose logs`, look for `left "<channel>"`):
+- someone used `ryn leave`, or the queue has been empty for `MUSIC_IDLE_MINUTES` (0 = never),
+- everyone else left the channel for `MUSIC_ALONE_SECONDS` (0 = never),
+- Discord removed it (kicked, channel deleted, or someone disconnected it), or the connection dropped and didn't come back
+  within `MUSIC_RECONNECT_SECONDS`. In that case it also says so in the text channel.
+
+Network hiccups (the laptop's WiFi, Discord moving the voice server) are retried automatically for two minutes,
+and the queue and the song keep going when the connection returns.
+
+yt-dlp updates never disconnect it. yt-dlp is a separate program that the bot starts for each song, so replacing
+its file leaves the voice connection alone: the song playing carries on, and the next one uses the new version.
+Updating yt-dlp never needs a bot restart. Only changes to the bot itself (new files from me) do.
+
+After editing `.env`, run `sudo docker compose up -d`. A plain `docker compose restart` keeps the old values.
+Restarting or rebuilding always disconnects the bot from voice, because the connection lives inside the process.
+It leaves cleanly and says so in the channel.
+
 ## If something goes wrong
 - `docker compose logs -f` shows what the bot sees. On start it prints the yt-dlp and ffmpeg versions, or says what's missing.
 - **"YouTube is asking this server to prove it isn't a bot"** (or an age-restricted video): YouTube wants a login.
