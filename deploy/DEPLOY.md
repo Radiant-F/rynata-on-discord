@@ -20,6 +20,7 @@ docker compose up -d --build
 docker compose logs -f             # watch it start (Ctrl+C leaves it running)
 ```
 Update later: copy the new files over, then `docker compose up -d --build`.
+After changing `.env`, run `docker compose up -d` (a plain `restart` keeps the old values).
 
 ## 2b. Without Docker
 Install Node 22 (e.g. via https://github.com/nodesource/distributions) and, for music, ffmpeg and yt-dlp (see `deploy/MUSIC.md`), then:
