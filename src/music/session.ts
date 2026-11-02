@@ -8,7 +8,6 @@ import {
   entersState,
   joinVoiceChannel,
   type AudioPlayer,
-  type VoiceConnection,
 } from "@discordjs/voice";
 import type { Guild, MessageCreateOptions, MessageEditOptions, VoiceBasedChannel } from "discord.js";
 import { musicConfig } from "./config";
@@ -29,7 +28,10 @@ export type Loop = "off" | "track" | "queue";
 export interface ConnectionLike {
   subscribe(player: AudioPlayer): unknown;
   destroy(): void;
-  on(event: string, listener: (...args: unknown[]) => void): unknown;
+  rejoin(): boolean;
+  readonly state: { status: string; reason?: number; closeCode?: number };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: string, listener: (...args: any[]) => void): unknown;
 }
 
 export interface SessionDeps {
@@ -83,6 +85,7 @@ export class MusicSession {
   private pickedAt = 0;
   private idleTimer: NodeJS.Timeout | undefined;
   private aloneTimer: NodeJS.Timeout | undefined;
+  private stopWatching: () => void = () => {};
 
   private constructor(
     readonly guild: Guild,
@@ -104,17 +107,7 @@ export class MusicSession {
       this.playerError = err.message;
     });
 
-    // Moved to another channel, or the connection dropped: give it a few seconds to recover
-    connection.on(VoiceConnectionStatus.Disconnected, async () => {
-      const real = connection as unknown as VoiceConnection;
-      try {
-        await Promise.race([entersState(real, VoiceConnectionStatus.Signalling, 5000), entersState(real, VoiceConnectionStatus.Connecting, 5000)]);
-      } catch {
-        this.destroy();
-      }
-    });
-    connection.on(VoiceConnectionStatus.Destroyed, () => this.destroy());
-
+    this.watchConnection(connection);
     this.startIdleTimer();
   }
 
@@ -202,9 +195,12 @@ export class MusicSession {
     }
   }
 
-  destroy() {
+  /** Leave the voice channel. `why` goes in the log, so a disappearing bot is never a mystery. */
+  destroy(why = "requested") {
     if (this.destroyed) return;
     this.destroyed = true;
+    console.log(`[music] left "${this.voiceChannel.name ?? this.voiceChannel.id}" (${this.guild.name}): ${why}`);
+    this.stopWatching();
     this.clearIdle();
     clearTimeout(this.aloneTimer);
     this.queue.length = 0;
@@ -219,9 +215,89 @@ export class MusicSession {
     this.onDestroy();
   }
 
+  /** Keeps the voice connection alive through network hiccups, and never lets its errors crash the bot. */
+  private watchConnection(connection: ConnectionLike) {
+    const where = () => `"${this.voiceChannel.name ?? this.voiceChannel.id}" (${this.guild.name})`;
+    let giveUp: NodeJS.Timeout | undefined;
+    let retry: NodeJS.Timeout | undefined;
+    let moveCheck: NodeJS.Timeout | undefined;
+    let dropped = false;
+    const clear = () => {
+      clearTimeout(giveUp);
+      clearTimeout(moveCheck);
+      clearInterval(retry);
+      giveUp = moveCheck = retry = undefined;
+    };
+    this.stopWatching = clear;
+
+    // Without a listener, one network error would throw and take the whole bot down
+    connection.on("error", (err: Error) => console.error(`[music] voice connection error in ${where()}:`, err.message));
+
+    connection.on("stateChange", (before: { status: string }, after: { status: string; reason?: number; closeCode?: number }) => {
+      if (this.destroyed) return;
+
+      if (after.status === VoiceConnectionStatus.Ready) {
+        if (dropped) console.log(`[music] voice connection to ${where()} is back`);
+        dropped = false;
+        clear();
+        return;
+      }
+      if (after.status === VoiceConnectionStatus.Destroyed) {
+        this.destroy("the voice connection was closed");
+        return;
+      }
+
+      if (before.status === VoiceConnectionStatus.Ready) {
+        dropped = true;
+        clear();
+        const reason = after.closeCode ? `close code ${after.closeCode}` : after.reason !== undefined ? `reason ${after.reason}` : after.status;
+        console.warn(`[music] voice connection to ${where()} dropped (${reason}); trying to get it back`);
+        const wait = musicConfig().reconnectMs;
+        giveUp = setTimeout(() => this.lose(`it couldn't reconnect within ${Math.round(wait / 1000)} seconds`), wait);
+        giveUp.unref();
+      }
+
+      if (after.status === VoiceConnectionStatus.Disconnected) {
+        if (after.closeCode === 4014) {
+          // Either I was moved to another channel (then it reconnects by itself) or I was kicked / the channel is gone
+          clearTimeout(moveCheck);
+          moveCheck = setTimeout(() => {
+            if (connection.state.status === VoiceConnectionStatus.Disconnected) this.lose("I was disconnected from the voice channel (kicked, or the channel was deleted)");
+          }, Number(process.env.MUSIC_MOVE_GRACE_MS ?? 5000));
+          moveCheck.unref();
+        } else {
+          // Network or gateway trouble: knock again every few seconds until it works
+          const knock = () => {
+            if (connection.state.status !== VoiceConnectionStatus.Disconnected) return clearInterval(retry);
+            connection.rejoin();
+          };
+          clearInterval(retry);
+          retry = setInterval(knock, 5000);
+          retry.unref();
+          knock();
+        }
+      }
+    });
+  }
+
+  /** The connection is gone and not coming back: say so, instead of just vanishing. */
+  private lose(why: string) {
+    if (this.destroyed) return;
+    void Promise.resolve(this.say({ content: `⚠️ I lost the voice connection and had to leave: ${why}.` })).catch(() => {});
+    this.destroy(why);
+  }
+
   /** Called when someone joins/leaves voice: leave if only bots remain. */
   checkAlone() {
-    const humans = this.voiceChannel.members.filter((m) => !m.user.bot).size;
+    const ms = musicConfig().aloneMs;
+    if (!ms) return; // 0 = stay no matter what
+
+    // Count people from voice states; someone I can't identify yet counts as a person, so I never leave by mistake
+    const me = this.guild.client.user?.id;
+    let humans = 0;
+    for (const state of this.guild.voiceStates.cache.values()) {
+      if (state.channelId === this.voiceChannel.id && state.id !== me && !state.member?.user.bot) humans++;
+    }
     if (humans > 0) {
       clearTimeout(this.aloneTimer);
       this.aloneTimer = undefined;
@@ -230,8 +306,8 @@ export class MusicSession {
     if (this.aloneTimer) return;
     this.aloneTimer = setTimeout(() => {
       void this.say({ content: "👋 Everyone left, so I did too." });
-      this.destroy();
-    }, musicConfig().aloneMs);
+      this.destroy("everyone left the voice channel");
+    }, ms);
     this.aloneTimer.unref();
   }
 
@@ -248,7 +324,7 @@ export class MusicSession {
     if (!ms || this.destroyed) return;
     this.idleTimer = setTimeout(() => {
       void this.say({ content: "💤 Nothing is playing, so I left the voice channel." });
-      this.destroy();
+      this.destroy(`idle for ${ms / 60_000} minutes`);
     }, ms);
     this.idleTimer.unref();
   }
@@ -378,6 +454,16 @@ export class MusicSession {
 /* ------------------------------ one session per server ------------------------------ */
 
 export const sessions = new Map<string, MusicSession>();
+
+/** Leave every voice channel cleanly (used when the bot is told to stop). */
+export async function shutdownSessions(why: string, notice?: string) {
+  await Promise.all(
+    [...sessions.values()].map(async (session) => {
+      if (notice) await Promise.race([Promise.resolve(session.say({ content: notice })).catch(() => {}), sleep(1500)]);
+      session.destroy(why);
+    }),
+  );
+}
 const pending = new Map<string, Promise<MusicSession>>();
 
 export function ensureSession(guild: Guild, voiceChannel: VoiceBasedChannel, say: Say): Promise<MusicSession> {
