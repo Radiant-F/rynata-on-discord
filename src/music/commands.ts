@@ -78,7 +78,7 @@ async function addToQueue(ctx: Ctx, request: Request, next: boolean, channel: Vo
   let session = sessions.get(ctx.guild.id);
   if (session && session.voiceChannel.id !== channel.id) {
     if (!session.isIdle) throw new MusicError(`I'm already playing in <#${session.voiceChannel.id}>. Join it to add songs.`);
-    session.destroy(); // idle in another channel: move over to the person asking
+    session.destroy("moving to the channel of the person who asked"); // idle in another channel
   }
 
   session = await ensureSession(ctx.guild, channel, ctx.say);
@@ -157,7 +157,7 @@ async function join(ctx: Ctx) {
   const existing = sessions.get(ctx.guild.id);
   if (existing && existing.voiceChannel.id !== channel.id) {
     if (!existing.isIdle) throw new MusicError(`I'm already playing in <#${existing.voiceChannel.id}>.`);
-    existing.destroy();
+    existing.destroy("moving to the channel of the person who asked");
   }
   const session = await ensureSession(ctx.guild, channel, ctx.say);
   session.say = ctx.say;
@@ -206,7 +206,7 @@ const COMMANDS: Record<string, (ctx: Ctx) => Promise<void>> = {
 
   async leave(ctx) {
     const session = requireSession(ctx);
-    session.destroy();
+    session.destroy(`${ctx.member.user.tag} used the leave command`);
     await ctx.say({ content: "👋 Bye!" });
   },
 
@@ -293,10 +293,27 @@ function onVoiceState(before: VoiceState, after: VoiceState) {
   if (!session) return;
 
   if (after.id === client.user?.id) {
-    if (!after.channelId) session.destroy(); // kicked out of the channel
+    if (!after.channelId) {
+      // someone disconnected me from the voice channel
+      void Promise.resolve(session.say({ content: "⚠️ I was disconnected from the voice channel, so the music stopped." })).catch(() => {});
+      session.destroy("I was disconnected from the voice channel by someone or by Discord");
+    }
     else if (after.channel && after.channelId !== session.voiceChannel.id) session.voiceChannel = after.channel; // moved
   }
   session.checkAlone();
+}
+
+/**
+ * yt-dlp runs as a separate program each time, so updating its file never touches the voice connection:
+ * the song playing keeps going and the next one uses the new version. The bot never needs a restart for this.
+ */
+export async function checkYtdlpUpdate() {
+  const before = await ytdlpVersion();
+  const output = await updateYtDlp();
+  const after = await ytdlpVersion();
+  if (/error|unable|permission denied|read-only/i.test(output)) console.warn(`🎵 yt-dlp update check failed: ${output}`);
+  else if (after && after !== before) console.log(`🎵 yt-dlp updated ${before} → ${after} (no restart needed).`);
+  else console.log(`🎵 yt-dlp is up to date (${after}).`);
 }
 
 async function upkeep() {
@@ -309,12 +326,8 @@ async function upkeep() {
   console.log(`🎵 Music is ready (yt-dlp ${ytdlp}, ffmpeg ${ffmpeg}). In Discord: "${musicConfig().prefix} help"`);
 
   if (!musicConfig().autoUpdate) return;
-  const update = async () => {
-    const result = await updateYtDlp();
-    if (result) console.log(`🎵 yt-dlp update check: ${result}`);
-  };
-  setTimeout(update, 30_000).unref();
-  setInterval(update, 12 * 3600_000).unref();
+  setTimeout(() => void checkYtdlpUpdate(), 30_000).unref();
+  setInterval(() => void checkYtdlpUpdate(), 12 * 3600_000).unref();
 }
 
 export function registerMusic() {
