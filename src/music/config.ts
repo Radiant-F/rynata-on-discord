@@ -21,7 +21,8 @@ export function musicConfig() {
     mixSize: int(process.env.MUSIC_MIX_SIZE, 20, 1, 100), // YouTube Mixes never end, so only this many are queued
     maxTrackMinutes: int(process.env.MUSIC_MAX_TRACK_MINUTES, 240, 0, 1440), // 0 = no limit
     idleMs: Math.max(0, Number(process.env.MUSIC_IDLE_MINUTES ?? 5)) * 60_000, // 0 = never leave
-    aloneMs: Math.max(0, Number(process.env.MUSIC_ALONE_SECONDS ?? 60)) * 1000,
+    aloneMs: Math.max(0, Number(process.env.MUSIC_ALONE_SECONDS ?? 60)) * 1000, // 0 = never leave just because nobody is listening
+    reconnectMs: Math.max(0, Number(process.env.MUSIC_RECONNECT_SECONDS ?? 120)) * 1000, // how long to keep trying after the connection drops
     ytdlp: process.env.YTDLP_PATH || "yt-dlp",
     ffmpeg: process.env.FFMPEG_PATH || "ffmpeg",
     cookies: process.env.YTDLP_COOKIES || "",
